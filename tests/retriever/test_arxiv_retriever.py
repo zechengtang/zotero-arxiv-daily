@@ -5,7 +5,11 @@ from types import SimpleNamespace
 
 import feedparser
 
-from zotero_arxiv_daily.retriever.arxiv_retriever import ArxivRetriever, _run_with_hard_timeout
+from zotero_arxiv_daily.retriever.arxiv_retriever import (
+    ArxivRetriever,
+    _fetch_results_in_batches,
+    _run_with_hard_timeout,
+)
 import zotero_arxiv_daily.retriever.arxiv_retriever as arxiv_retriever
 
 
@@ -88,3 +92,32 @@ def test_run_with_hard_timeout_returns_none_on_failure(monkeypatch):
     )
     assert result is None
     assert "boom" in warnings[0]
+
+
+def test_fetch_results_in_batches_reduce_batch_size_on_429(monkeypatch):
+    monkeypatch.setattr(arxiv_retriever, "tqdm", lambda *args, **kwargs: SimpleNamespace(update=lambda _: None, close=lambda: None))
+    monkeypatch.setattr(arxiv_retriever.time, "sleep", lambda _: None)
+
+    fake_results = {
+        "a1": SimpleNamespace(title="a1"),
+        "a2": SimpleNamespace(title="a2"),
+        "a3": SimpleNamespace(title="a3"),
+    }
+    calls: list[list[str]] = []
+
+    class FakeClient:
+        def results(self, search):
+            ids = list(search.id_list)
+            calls.append(ids)
+            if len(ids) > 1:
+                raise arxiv_retriever.arxiv.HTTPError("http://x", 0, 429)
+            return iter([fake_results[ids[0]]])
+
+    monkeypatch.setattr(arxiv_retriever, "ARXIV_INITIAL_BATCH_SIZE", 3)
+    monkeypatch.setattr(arxiv_retriever, "ARXIV_MIN_BATCH_SIZE", 1)
+    client = FakeClient()
+    output = _fetch_results_in_batches(client, ["a1", "a2", "a3"])
+
+    assert [item.title for item in output] == ["a1", "a2", "a3"]
+    assert calls[0] == ["a1", "a2", "a3"]
+    assert all(len(ids) == 1 for ids in calls[1:])

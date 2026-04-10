@@ -12,12 +12,17 @@ from queue import Empty
 from typing import Any, Callable, TypeVar
 from loguru import logger
 import requests
+import time
 
 T = TypeVar("T")
 
 DOWNLOAD_TIMEOUT = (10, 60)
 PDF_EXTRACT_TIMEOUT = 180
 TAR_EXTRACT_TIMEOUT = 180
+ARXIV_INITIAL_BATCH_SIZE = 20
+ARXIV_MIN_BATCH_SIZE = 1
+ARXIV_RATE_LIMIT_SLEEP_SECONDS = 20
+ARXIV_MAX_RETRY_AT_MIN_BATCH = 3
 
 
 def _download_file(url: str, path: str) -> None:
@@ -105,6 +110,53 @@ def _extract_text_from_tar_worker(source_url: str, paper_id: str) -> str | None:
         return file_contents["all"]
 
 
+def _is_http_429(exc: Exception) -> bool:
+    return "HTTP 429" in str(exc) or "status_code=429" in str(exc)
+
+
+def _fetch_results_in_batches(client: arxiv.Client, all_paper_ids: list[str]) -> list[ArxivResult]:
+    raw_papers: list[ArxivResult] = []
+    batch_size = ARXIV_INITIAL_BATCH_SIZE
+    min_batch_retry_count = 0
+    index = 0
+    bar = tqdm(total=len(all_paper_ids))
+    while index < len(all_paper_ids):
+        ids_batch = all_paper_ids[index:index + batch_size]
+        search = arxiv.Search(id_list=ids_batch)
+        try:
+            batch_results = list(client.results(search))
+            raw_papers.extend(batch_results)
+            bar.update(len(batch_results))
+            index += len(ids_batch)
+            min_batch_retry_count = 0
+            if batch_size < ARXIV_INITIAL_BATCH_SIZE:
+                batch_size = min(ARXIV_INITIAL_BATCH_SIZE, batch_size * 2)
+            time.sleep(1)
+        except arxiv.HTTPError as exc:
+            if not _is_http_429(exc):
+                bar.close()
+                raise
+            if batch_size > ARXIV_MIN_BATCH_SIZE:
+                new_batch_size = max(ARXIV_MIN_BATCH_SIZE, batch_size // 2)
+                logger.warning(
+                    f"arXiv API rate limited (429). Reducing batch size from {batch_size} to {new_batch_size}."
+                )
+                batch_size = new_batch_size
+                continue
+            min_batch_retry_count += 1
+            if min_batch_retry_count > ARXIV_MAX_RETRY_AT_MIN_BATCH:
+                bar.close()
+                raise
+            logger.warning(
+                f"arXiv API rate limited (429) at minimum batch size. "
+                f"Sleeping {ARXIV_RATE_LIMIT_SLEEP_SECONDS}s before retry "
+                f"({min_batch_retry_count}/{ARXIV_MAX_RETRY_AT_MIN_BATCH})."
+            )
+            time.sleep(ARXIV_RATE_LIMIT_SLEEP_SECONDS)
+    bar.close()
+    return raw_papers
+
+
 @register_retriever("arxiv")
 class ArxivRetriever(BaseRetriever):
     def __init__(self, config):
@@ -120,7 +172,6 @@ class ArxivRetriever(BaseRetriever):
         feed = feedparser.parse(f"https://rss.arxiv.org/atom/{query}")
         if 'Feed error for query' in feed.feed.title:
             raise Exception(f"Invalid ARXIV_QUERY: {query}.")
-        raw_papers = []
         allowed_announce_types = {"new", "cross"} if include_cross_list else {"new"}
         all_paper_ids = [
             i.id.removeprefix("oai:arXiv.org:")
@@ -131,15 +182,7 @@ class ArxivRetriever(BaseRetriever):
             all_paper_ids = all_paper_ids[:10]
 
         # Get full information of each paper from arxiv api
-        bar = tqdm(total=len(all_paper_ids))
-        for i in range(0, len(all_paper_ids), 20):
-            search = arxiv.Search(id_list=all_paper_ids[i:i + 20])
-            batch = list(client.results(search))
-            bar.update(len(batch))
-            raw_papers.extend(batch)
-        bar.close()
-
-        return raw_papers
+        return _fetch_results_in_batches(client, all_paper_ids)
 
     def convert_to_paper(self, raw_paper: ArxivResult) -> Paper:
         title = raw_paper.title

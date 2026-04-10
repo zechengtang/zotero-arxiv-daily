@@ -169,6 +169,47 @@ Then check the log and the receiver email after it finishes.
 
 By default, the main workflow runs on 22:00 UTC everyday. You can change this time by editting the workflow config `.github/workflows/main.yml`.
 
+### 通过 GitHub Actions 使用（中文）
+#### 先配置一次（必须）
+1. Fork 本仓库到你的 GitHub 账号。
+2. 进入你 fork 后仓库的 **Settings → Secrets and variables → Actions**，添加以下 Secrets：
+   - `ZOTERO_ID`
+   - `ZOTERO_KEY`
+   - `SENDER`
+   - `RECEIVER`
+   - `SENDER_PASSWORD`
+   - `OPENAI_API_KEY`
+   - `OPENAI_API_BASE`
+3. 在同一页面添加仓库变量 `CUSTOM_CONFIG`，内容为 YAML 配置（见上文示例）。
+
+#### 如何手动运行（你现在正在用的方式）
+1. 打开仓库的 **Actions** 页面。
+2. 选择 **Test**（`.github/workflows/test.yml`）或 **Send emails daily**（`.github/workflows/main.yml`）。
+3. 点击 **Run workflow** 开始运行。
+4. 运行结束后查看日志和邮箱结果。
+
+#### 如何每天自动运行
+`Send emails daily` 工作流在 `main.yml` 里已经配置了定时触发：
+```yaml
+schedule:
+  - cron: '0 22 * * *'
+```
+这表示每天 **22:00 UTC** 自动运行（按北京时间是次日 06:00）。你只需保持该 workflow 启用状态即可。
+
+如果你想改自动运行时间，修改 `.github/workflows/main.yml` 里的 `cron` 即可（注意是 UTC 时间）。
+
+#### 内置工作流说明
+- `main.yml`：支持手动触发 + 每日定时触发；把 `CUSTOM_CONFIG` 写入 `config/custom.yaml` 后执行 `uv run src/zotero_arxiv_daily/main.py`。
+- `test.yml`：仅手动触发；会先设置 `DEBUG=true` 再执行同一入口脚本。
+- `keep-alive.yml`：每 30 天（或手动）更新 `.github/keep-alive.txt` 并自动提交，保持仓库活跃，降低定时任务因长期不活跃被停用的风险。
+
+#### 常见问题
+1. **Actions 里显示 completed 正常吗？**  
+   正常。`completed` 只表示本次运行“结束了”，不代表一定成功。请继续确认：
+   - Job 是不是绿色 `Success`；
+   - 日志里是否有缺少 secrets / config 的报错；
+   - 邮件是否实际收到。
+
 ### Local Running
 Supported by [uv](https://github.com/astral-sh/uv), this workflow can easily run on your local device if uv is installed:
 ```bash
