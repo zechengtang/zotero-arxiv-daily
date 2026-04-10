@@ -169,6 +169,25 @@ Then check the log and the receiver email after it finishes.
 
 By default, the main workflow runs on 22:00 UTC everyday. You can change this time by editting the workflow config `.github/workflows/main.yml`.
 
+### Using this project with GitHub Actions (Chinese quick guide)
+1. Fork this repository to your own GitHub account.
+2. In your fork, go to **Settings → Secrets and variables → Actions**, then add required secrets:
+   - `ZOTERO_ID`
+   - `ZOTERO_KEY`
+   - `SENDER`
+   - `RECEIVER`
+   - `SENDER_PASSWORD`
+   - `OPENAI_API_KEY`
+   - `OPENAI_API_BASE`
+3. In the same page, add a repository variable named `CUSTOM_CONFIG` and paste your YAML config.
+4. Open **Actions** tab and manually run **Test** workflow first (`.github/workflows/test.yml`); it runs in debug mode.
+5. After test passes, enable the scheduled workflow **Send emails daily** (`.github/workflows/main.yml`) to run daily.
+6. If needed, modify cron in `main.yml` (`0 22 * * *`) to adjust execution time (UTC).
+
+Core behavior of built-in workflows:
+- `main.yml`: supports both manual trigger and daily schedule, reads `CUSTOM_CONFIG` into `config/custom.yaml`, then runs `uv run src/zotero_arxiv_daily/main.py`.
+- `test.yml`: manual trigger only, sets `DEBUG=true`, then runs the same entry script for verification.
+
 ### Local Running
 Supported by [uv](https://github.com/astral-sh/uv), this workflow can easily run on your local device if uv is installed:
 ```bash
