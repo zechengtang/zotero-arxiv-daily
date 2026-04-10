@@ -169,10 +169,16 @@ Then check the log and the receiver email after it finishes.
 
 By default, the main workflow runs on 22:00 UTC everyday. You can change this time by editting the workflow config `.github/workflows/main.yml`.
 
+<<<<<<< codex/find-usage-of-github-actions-in-project-xol2ni
 ### 通过 GitHub Actions 使用（中文）
 #### 先配置一次（必须）
 1. Fork 本仓库到你的 GitHub 账号。
 2. 进入你 fork 后仓库的 **Settings → Secrets and variables → Actions**，添加以下 Secrets：
+=======
+### Using this project with GitHub Actions (Chinese quick guide)
+1. Fork this repository to your own GitHub account.
+2. In your fork, go to **Settings → Secrets and variables → Actions**, then add required secrets:
+>>>>>>> main
    - `ZOTERO_ID`
    - `ZOTERO_KEY`
    - `SENDER`
@@ -180,6 +186,7 @@ By default, the main workflow runs on 22:00 UTC everyday. You can change this ti
    - `SENDER_PASSWORD`
    - `OPENAI_API_KEY`
    - `OPENAI_API_BASE`
+<<<<<<< codex/find-usage-of-github-actions-in-project-xol2ni
 3. 在同一页面添加仓库变量 `CUSTOM_CONFIG`，内容为 YAML 配置（见上文示例）。
 
 #### 如何手动运行（你现在正在用的方式）
@@ -209,6 +216,16 @@ schedule:
    - Job 是不是绿色 `Success`；
    - 日志里是否有缺少 secrets / config 的报错；
    - 邮件是否实际收到。
+=======
+3. In the same page, add a repository variable named `CUSTOM_CONFIG` and paste your YAML config.
+4. Open **Actions** tab and manually run **Test** workflow first (`.github/workflows/test.yml`); it runs in debug mode.
+5. After test passes, enable the scheduled workflow **Send emails daily** (`.github/workflows/main.yml`) to run daily.
+6. If needed, modify cron in `main.yml` (`0 22 * * *`) to adjust execution time (UTC).
+
+Core behavior of built-in workflows:
+  - `main.yml`: supports both manual trigger and daily schedule, reads `CUSTOM_CONFIG` into `config/custom.yaml`, then runs `uv run src/zotero_arxiv_daily/main.py`.
+- `test.yml`: manual trigger only, sets `DEBUG=true`, then runs the same entry script for verification.
+>>>>>>> main
 
 ### Local Running
 Supported by [uv](https://github.com/astral-sh/uv), this workflow can easily run on your local device if uv is installed:
